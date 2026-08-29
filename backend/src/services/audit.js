@@ -1,0 +1,1 @@
+import {admin} from '../db.js';export async function audit(req,action,entity,entityId,oldData=null,newData=null){await admin.from('audit_logs').insert({actor_id:req.user?.id||null,action,entity,entity_id:String(entityId||''),old_data:oldData,new_data:newData,ip_hash:req.ip_hash||null}).throwOnError()}

@@ -1,0 +1,1 @@
+import {appError} from '../utils.js';export const validate=(schema,source='body')=>(req,res,next)=>{const {value,error}=schema.validate(req[source],{abortEarly:false,stripUnknown:true,convert:true});if(error)return next(appError(400,'DATOS_INVALIDOS',error.details.map(x=>x.message)));req[source]=value;next()};

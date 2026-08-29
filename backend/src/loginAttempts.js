@@ -1,0 +1,4 @@
+import {admin} from './supabase.js'; import {config} from './config.js'; import {hash} from './security.js';
+const key=(email,ip)=>hash(`${String(email).toLowerCase().trim()}|${ip}`);
+export async function check(email,ip){const k=key(email,ip),since=new Date(Date.now()-config.loginWindow*60000).toISOString();const {count}=await admin.from('login_attempts').select('*',{head:true,count:'exact'}).eq('attempt_key',k).eq('success',false).gte('created_at',since);return {allowed:(count||0)<config.loginMax,remaining:Math.max(0,config.loginMax-(count||0))}}
+export async function record(email,ip,success,ua){await admin.from('login_attempts').insert({attempt_key:key(email,ip),email_hash:hash(String(email).toLowerCase()),ip_hash:hash(ip),success,user_agent:String(ua||'').slice(0,300)});if(success)await admin.from('login_attempts').delete().eq('attempt_key',key(email,ip)).eq('success',false)}

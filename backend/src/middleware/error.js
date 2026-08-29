@@ -1,0 +1,1 @@
+export function notFound(req,res){res.status(404).json({error:'RUTA_NO_ENCONTRADA'})}export function errorHandler(err,req,res,next){const status=err.status||500;if(status>=500)console.error({message:err.message,stack:err.stack,requestId:req.id});res.status(status).json({error:err.code||'ERROR_INTERNO',detail:status<500?err.detail:undefined,requestId:req.id})}

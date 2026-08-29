@@ -1,0 +1,1 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {sha,normalizeEmail} from '../src/utils.js';test('hash determinista',()=>assert.equal(sha('x'),sha('x')));test('normaliza correo',()=>assert.equal(normalizeEmail(' TEST@Email.COM '),'test@email.com'));

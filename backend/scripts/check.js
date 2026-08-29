@@ -1,0 +1,1 @@
+import fs from 'node:fs';import path from 'node:path';const required=['src/server.js','supabase/migrations/002_complete_backend.sql','.env.example'];for(const file of required){if(!fs.existsSync(path.resolve(file)))throw new Error(`Falta ${file}`)}console.log('Estructura correcta');
