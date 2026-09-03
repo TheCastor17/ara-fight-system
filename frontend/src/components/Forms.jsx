@@ -334,14 +334,35 @@ export function ClassForm({ branches, disciplines, item, onDone }) {
 
 export function StudentForm({ branches, plans, classes, item, onDone }) {
   const [form, setForm] = useState({
-    first_name: '', last_name: '', document: '', birth_date: '', phone: '', email: '', address: '',
-    guardian_name: '', guardian_document: '', guardian_relationship: '', guardian_phone: '', guardian_email: '',
-    branch_id: '', plan_id: '', payment_day: 1, discount: 0, class_ids: []
+    first_name: '',
+    last_name: '',
+    document: '',
+    birth_date: '',
+    phone: '',
+    email: '',
+    address: '',
+    contact_mode: 'independent',
+    guardian_name: '',
+    guardian_relationship: '',
+    guardian_phone: '',
+    guardian_email: '',
+    branch_id: '',
+    plan_id: '',
+    payment_day: 1,
+    discount: 0,
+    class_ids: []
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
+    const hasGuardian = Boolean(
+      item?.guardian_name ||
+      item?.guardian_relationship ||
+      item?.guardian_phone ||
+      item?.guardian_email
+    );
+
     setForm({
       first_name: item?.first_name || '',
       last_name: item?.last_name || '',
@@ -350,8 +371,8 @@ export function StudentForm({ branches, plans, classes, item, onDone }) {
       phone: item?.phone || '',
       email: item?.email || '',
       address: item?.address || '',
+      contact_mode: hasGuardian ? 'guardian' : 'independent',
       guardian_name: item?.guardian_name || '',
-      guardian_document: item?.guardian_document || '',
       guardian_relationship: item?.guardian_relationship || '',
       guardian_phone: item?.guardian_phone || '',
       guardian_email: item?.guardian_email || '',
@@ -364,8 +385,32 @@ export function StudentForm({ branches, plans, classes, item, onDone }) {
     setError('');
   }, [item]);
 
-  const availablePlans = plans.filter((plan) => !plan.branch_id || plan.branch_id === form.branch_id);
-  const availableClasses = classes.filter((classItem) => classItem.branch_id === form.branch_id && classItem.active !== false);
+  const availablePlans = plans.filter(
+    (plan) => !plan.branch_id || plan.branch_id === form.branch_id
+  );
+  const availableClasses = classes.filter(
+    (classItem) => classItem.branch_id === form.branch_id && classItem.active !== false
+  );
+
+  function setValue(name, value) {
+    setForm((current) => ({ ...current, [name]: value }));
+  }
+
+  function changeContactMode(mode) {
+    setForm((current) => ({
+      ...current,
+      contact_mode: mode,
+      ...(mode === 'independent'
+        ? {
+            guardian_name: '',
+            guardian_relationship: '',
+            guardian_phone: '',
+            guardian_email: ''
+          }
+        : {})
+    }));
+    setError('');
+  }
 
   function toggleClass(classId) {
     setForm((current) => ({
@@ -378,73 +423,118 @@ export function StudentForm({ branches, plans, classes, item, onDone }) {
 
   async function save(event) {
     event.preventDefault();
-    setSaving(true);
     setError('');
+
+    if (!form.first_name.trim() || !form.last_name.trim()) {
+      setError('Escribe los nombres y apellidos del alumno.');
+      return;
+    }
+    if (form.contact_mode === 'independent' && !form.phone.trim()) {
+      setError('El alumno independiente debe tener un teléfono o WhatsApp propio.');
+      return;
+    }
+    if (form.contact_mode === 'guardian' && !form.guardian_name.trim()) {
+      setError('Escribe el nombre del tutor o responsable.');
+      return;
+    }
+    if (form.contact_mode === 'guardian' && !form.guardian_phone.trim()) {
+      setError('Escribe el WhatsApp del tutor o responsable.');
+      return;
+    }
+    if (!form.branch_id) {
+      setError('Selecciona una sede.');
+      return;
+    }
+
     try {
+      setSaving(true);
+      const usesGuardian = form.contact_mode === 'guardian';
       const payload = {
-        first_name: form.first_name.trim(), last_name: form.last_name.trim(),
-        document: form.document.trim() || null, birth_date: form.birth_date || null,
-        phone: form.phone.trim() || null, email: form.email.trim() || null,
-        address: form.address.trim() || null, guardian_name: form.guardian_name.trim() || null,
-        guardian_document: form.guardian_document.trim() || null,
-        guardian_relationship: form.guardian_relationship.trim() || null,
-        guardian_phone: form.guardian_phone.trim() || null,
-        guardian_email: form.guardian_email.trim() || null,
-        branch_id: form.branch_id, plan_id: form.plan_id || null,
-        payment_day: Number(form.payment_day), discount: Number(form.discount), class_ids: form.class_ids
+        first_name: form.first_name.trim(),
+        last_name: form.last_name.trim(),
+        document: form.document.trim() || null,
+        birth_date: form.birth_date || null,
+        phone: form.phone.trim() || null,
+        email: form.email.trim() || null,
+        address: form.address.trim() || null,
+        guardian_name: usesGuardian ? form.guardian_name.trim() || null : null,
+        guardian_relationship: usesGuardian ? form.guardian_relationship.trim() || null : null,
+        guardian_phone: usesGuardian ? form.guardian_phone.trim() || null : null,
+        guardian_email: usesGuardian ? form.guardian_email.trim() || null : null,
+        branch_id: form.branch_id,
+        plan_id: form.plan_id || null,
+        payment_day: Number(form.payment_day),
+        discount: Number(form.discount),
+        class_ids: form.class_ids
       };
+
       const data = item
         ? await api.patch(`/api/students/${item.id}`, payload)
         : await api.post('/api/students', payload);
       onDone(data);
     } catch (requestError) {
-      setError(getErrorMessage(requestError, item ? 'No se pudo modificar el alumno.' : 'No se pudo registrar el alumno.'));
+      setError(
+        getErrorMessage(
+          requestError,
+          item ? 'No se pudo modificar el alumno.' : 'No se pudo registrar el alumno.'
+        )
+      );
     } finally {
       setSaving(false);
     }
   }
 
-  const input = (key, type = 'text') => (
-    <input type={type} value={form[key]} onChange={(event) => setForm({ ...form, [key]: event.target.value })} />
-  );
-
   return (
     <form onSubmit={save} className="form-grid">
       <h3 className="full form-section">Datos personales</h3>
-      <Field label="Nombres"><input required value={form.first_name} onChange={(event) => setForm({ ...form, first_name: event.target.value })} /></Field>
-      <Field label="Apellidos"><input required value={form.last_name} onChange={(event) => setForm({ ...form, last_name: event.target.value })} /></Field>
-      <Field label="Documento">{input('document')}</Field>
-      <Field label="Nacimiento">{input('birth_date', 'date')}</Field>
-      <Field label="Teléfono">{input('phone')}</Field>
-      <Field label="Correo">{input('email', 'email')}</Field>
-      <Field full label="Dirección">{input('address')}</Field>
+      <Field label="Nombres"><input required value={form.first_name} onChange={(e) => setValue('first_name', e.target.value)} /></Field>
+      <Field label="Apellidos"><input required value={form.last_name} onChange={(e) => setValue('last_name', e.target.value)} /></Field>
+      <Field label="Documento de Identidad"><input value={form.document} onChange={(e) => setValue('document', e.target.value)} /></Field>
+      <Field label="Nacimiento"><input type="date" value={form.birth_date} onChange={(e) => setValue('birth_date', e.target.value)} /></Field>
+      <Field label="Teléfono / WhatsApp"><input value={form.phone} placeholder="+51 999 999 999" onChange={(e) => setValue('phone', e.target.value)} /></Field>
+      <Field label="Correo"><input type="email" value={form.email} onChange={(e) => setValue('email', e.target.value)} /></Field>
+      <Field full label="Dirección"><input value={form.address} onChange={(e) => setValue('address', e.target.value)} /></Field>
 
-      <h3 className="full form-section">Tutor o responsable</h3>
-      <Field label="Nombre">{input('guardian_name')}</Field>
-      <Field label="Documento">{input('guardian_document')}</Field>
-      <Field label="Parentesco">{input('guardian_relationship')}</Field>
-      <Field label="WhatsApp">{input('guardian_phone')}</Field>
-      <Field full label="Correo del responsable">{input('guardian_email', 'email')}</Field>
+      <h3 className="full form-section">Comunicación y administración</h3>
+      <div className="contact-mode full">
+        <label className={form.contact_mode === 'independent' ? 'contact-option selected' : 'contact-option'}>
+          <input type="radio" name="contact_mode" checked={form.contact_mode === 'independent'} onChange={() => changeContactMode('independent')} />
+          <span><b>Alumno independiente</b><small>Las comunicaciones se enviarán al teléfono del alumno.</small></span>
+        </label>
+        <label className={form.contact_mode === 'guardian' ? 'contact-option selected' : 'contact-option'}>
+          <input type="radio" name="contact_mode" checked={form.contact_mode === 'guardian'} onChange={() => changeContactMode('guardian')} />
+          <span><b>Añadir tutor o responsable</b><small>Las comunicaciones se dirigirán al responsable registrado.</small></span>
+        </label>
+      </div>
+
+      {form.contact_mode === 'independent' && (
+        <div className="notice full">Las renovaciones, pagos y avisos se comunicarán al teléfono del alumno.</div>
+      )}
+
+      {form.contact_mode === 'guardian' && (
+        <>
+          <Field label="Nombre del tutor"><input required value={form.guardian_name} onChange={(e) => setValue('guardian_name', e.target.value)} /></Field>
+          <Field label="Parentesco"><input value={form.guardian_relationship} placeholder="Madre, padre o apoderado" onChange={(e) => setValue('guardian_relationship', e.target.value)} /></Field>
+          <Field label="WhatsApp"><input required value={form.guardian_phone} placeholder="+51 999 999 999" onChange={(e) => setValue('guardian_phone', e.target.value)} /></Field>
+          <Field label="Correo del responsable"><input type="email" value={form.guardian_email} onChange={(e) => setValue('guardian_email', e.target.value)} /></Field>
+        </>
+      )}
 
       <h3 className="full form-section">Inscripción y pagos</h3>
       <Field label="Sede">
-        <select required value={form.branch_id} onChange={(event) => setForm({ ...form, branch_id: event.target.value, plan_id: '', class_ids: [] })}>
+        <select required value={form.branch_id} onChange={(e) => setForm({ ...form, branch_id: e.target.value, plan_id: '', class_ids: [] })}>
           <option value="">Selecciona una sede</option>
           {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
         </select>
       </Field>
       <Field label="Plan">
-        <select value={form.plan_id} onChange={(event) => setForm({ ...form, plan_id: event.target.value })}>
+        <select value={form.plan_id} onChange={(e) => setValue('plan_id', e.target.value)}>
           <option value="">Sin plan</option>
           {availablePlans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}
         </select>
       </Field>
-      <Field label="Día de pago">
-        <input type="number" min="1" max="31" required value={form.payment_day} onChange={(event) => setForm({ ...form, payment_day: Number(event.target.value) })} />
-      </Field>
-      <Field label="Descuento">
-        <input type="number" min="0" step="0.01" value={form.discount} onChange={(event) => setForm({ ...form, discount: Number(event.target.value) })} />
-      </Field>
+      <Field label="Día de renovación"><input type="number" min="1" max="31" required value={form.payment_day} onChange={(e) => setValue('payment_day', Number(e.target.value))} /></Field>
+      <Field label="Descuento"><input type="number" min="0" step="0.01" value={form.discount} onChange={(e) => setValue('discount', Number(e.target.value))} /></Field>
       <Field full label="Clases">
         {!form.branch_id ? <div className="notice">Selecciona una sede para ver las clases disponibles.</div> : availableClasses.length === 0 ? <div className="notice">La sede seleccionada no tiene clases activas.</div> : (
           <div className="checks">
@@ -457,6 +547,7 @@ export function StudentForm({ branches, plans, classes, item, onDone }) {
           </div>
         )}
       </Field>
+
       {error && <div className="form-error full">{error}</div>}
       <div className="form-actions full">
         <button type="submit" disabled={saving}>{saving ? 'Guardando...' : item ? 'Guardar cambios' : 'Registrar alumno'}</button>
