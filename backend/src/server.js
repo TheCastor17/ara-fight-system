@@ -23,12 +23,10 @@ import { notFound, errorHandler } from './middleware/error.js';
 import { sha } from './utils.js';
 import { startScheduler } from './services/scheduler.js';
 
+import usersRoutes from './routes/users.js';
+
 const app = express();
 
-/*
- * Render utiliza un proxy inverso.
- * TRUST_PROXY=1 permite interpretar correctamente la IP del cliente.
- */
 app.set(
   'trust proxy',
   Number(process.env.TRUST_PROXY || 1)
@@ -36,18 +34,13 @@ app.set(
 
 app.disable('x-powered-by');
 
-/*
- * Genera un identificador único para cada solicitud.
- */
 app.use((req, res, next) => {
   req.id = crypto.randomUUID();
   res.setHeader('x-request-id', req.id);
   next();
 });
 
-/*
- * Añade cabeceras HTTP de seguridad.
- */
+
 app.use(
   helmet({
     crossOriginResourcePolicy: {
@@ -56,16 +49,10 @@ app.use(
   })
 );
 
-/*
- * Restringe los orígenes que pueden consumir la API.
- */
+/* Restringe los orígenes que pueden consumir la API.*/
 app.use(
   cors({
     origin(origin, callback) {
-      /*
-       * Las solicitudes sin encabezado Origin pueden proceder de
-       * herramientas como Postman, curl o verificaciones internas.
-       */
       if (!origin || config.frontendUrls.includes(origin)) {
         return callback(null, true);
       }
@@ -95,17 +82,9 @@ app.use(
   })
 );
 
-/*
- * Protección contra HTTP Parameter Pollution.
- */
+/* Protección contra HTTP Parameter Pollution.*/
 app.use(hpp());
 
-/*
- * Analizador del cuerpo JSON.
- *
- * rawBody se conserva para comprobar la firma HMAC
- * de los webhooks enviados por Meta.
- */
 app.use(
   express.json({
     limit: '250kb',
@@ -116,21 +95,11 @@ app.use(
   })
 );
 
-/*
- * Conserva un hash de la IP para auditoría.
- * No almacena la dirección IP directamente.
- */
 app.use((req, res, next) => {
   req.ip_hash = sha(req.ip);
   next();
 });
 
-/*
- * Límite general para la API.
- *
- * El control específico de cinco intentos fallidos de inicio
- * de sesión se encuentra adicionalmente en el servicio de login.
- */
 app.use(
   rateLimit({
     windowMs: 15 * 60 * 1000,
@@ -147,9 +116,7 @@ app.use(
   })
 );
 
-/*
- * Comprobación pública de salud del backend.
- */
+/* Comprobación pública de salud del backend. */
 app.get('/health', (req, res) => {
   res.json({
     ok: true,
@@ -159,16 +126,6 @@ app.get('/health', (req, res) => {
   });
 });
 
-/*
- * Ruta requerida por el frontend después del inicio de sesión.
- *
- * El middleware authenticate:
- *
- * 1. Lee el Bearer token.
- * 2. Valida el token mediante Supabase Auth.
- * 3. Consulta public.profiles.
- * 4. Comprueba que el perfil esté activo.
- */
 app.get(
   '/api/me',
   authenticate,
@@ -184,14 +141,10 @@ app.get(
   }
 );
 
-/*
- * Rutas de autenticación.
- */
+/* Rutas de autenticación. */
 app.use('/auth', auth);
 
-/*
- * Rutas protegidas de la aplicación.
- */
+/* Rutas protegidas de la aplicación. */
 app.use('/api/dashboard', dashboard);
 app.use('/api/students', students);
 app.use('/api/attendance', attendance);
@@ -199,52 +152,29 @@ app.use('/api/catalog', catalog);
 app.use('/api/payments', payments);
 app.use('/api/files', files);
 app.use('/api/notifications', notifications);
+app.use('/api/users', usersRoutes);
 
-/*
- * Formulario público de preinscripción.
- *
- * Estas rutas no requieren una sesión administrativa, pero
- * validan el token de registro, la expiración y el uso único.
- */
 app.use('/public', publicRoutes);
 
-/*
- * Webhooks externos.
- */
+/* Webhooks externos. */
 app.use('/webhooks', webhooks);
 
-/*
- * Respuesta para rutas inexistentes.
- */
+/* Respuesta para rutas inexistentes. */
 app.use(notFound);
 
-/*
- * Control centralizado de errores.
- * Debe permanecer después de todas las rutas.
- */
 app.use(errorHandler);
 
-/*
- * Inicio del servidor HTTP.
- */
+/* Inicio del servidor HTTP. */
 const server = app.listen(
   config.port,
   () => {
-    console.log(
-      `DojoCloud API v2.0.1 en http://localhost:${config.port}`
-    );
+    // Aquí ya no hay console.log, el servidor arranca en silencio.
   }
 );
 
-/*
- * Inicia el programador de notificaciones solamente cuando
- * ENABLE_SCHEDULER=true en el archivo .env.
- */
 startScheduler();
 
-/*
- * Cierre controlado del servidor.
- */
+/* Cierre controlado del servidor. */
 function shutdown(signal) {
   console.log(`${signal} recibido. Cerrando servidor...`);
 
@@ -262,10 +192,6 @@ function shutdown(signal) {
     process.exit(0);
   });
 
-  /*
-   * Evita que el proceso permanezca abierto indefinidamente
-   * si alguna conexión no termina.
-   */
   setTimeout(() => {
     console.error(
       'Cierre forzado porque se superó el tiempo máximo.'

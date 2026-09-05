@@ -1,4 +1,40 @@
-import {admin} from '../db.js';import {appError,asyncRoute} from '../utils.js';
-export const authenticate=asyncRoute(async(req,res,next)=>{const token=req.get('authorization')?.replace(/^Bearer\s+/i,'');if(!token)throw appError(401,'NO_AUTORIZADO');const {data,error}=await admin.auth.getUser(token);if(error||!data.user)throw appError(401,'SESION_INVALIDA');const {data:profile,error:pError}=await admin.from('profiles').select('id,role,branch_id,full_name,active').eq('id',data.user.id).maybeSingle();if(pError||!profile)throw appError(403,'PERFIL_NO_CONFIGURADO');if(!profile.active)throw appError(403,'CUENTA_INACTIVA');req.token=token;req.user=data.user;req.profile=profile;next()});
-export const allow=(...roles)=>(req,res,next)=>roles.includes(req.profile?.role)?next():next(appError(403,'SIN_PERMISO'));
-export const branchScope=(req,res,next)=>{if(req.profile.role==='staff'){const requested=req.body?.branch_id||req.query?.branch_id;if(requested&&requested!==req.profile.branch_id)return next(appError(403,'SEDE_NO_AUTORIZADA'));req.query.branch_id=req.profile.branch_id}next()};
+import { admin } from '../db.js';
+import { appError, asyncRoute } from '../utils.js';
+
+export const authenticate = asyncRoute(async (req, res, next) => {
+  const token = req.get('authorization')?.replace(/^Bearer\s+/i, '');
+  if (!token) throw appError(401, 'NO_AUTORIZADO');
+
+  const { data, error } = await admin.auth.getUser(token);
+  if (error || !data.user) throw appError(401, 'SESION_INVALIDA');
+
+  const { data: profile, error: pError } = await admin
+    .from('profiles')
+    .select('id, role, branch_id, full_name, active')
+    .eq('id', data.user.id)
+    .maybeSingle();
+
+  if (pError || !profile) throw appError(403, 'PERFIL_NO_CONFIGURADO');
+  if (!profile.active) throw appError(403, 'CUENTA_INACTIVA');
+
+  req.token = token;
+  req.user = data.user;
+  req.profile = profile;
+  next();
+});
+
+export const allow = (...roles) => (req, res, next) =>
+  roles.includes(req.profile?.role) ? next() : next(appError(403, 'SIN_PERMISO'));
+
+export const requireAdmin = allow('admin');
+
+export const branchScope = (req, res, next) => {
+  if (req.profile.role === 'staff') {
+    const requested = req.body?.branch_id || req.query?.branch_id;
+    if (requested && requested !== req.profile.branch_id) {
+      return next(appError(403, 'SEDE_NO_AUTORIZADA'));
+    }
+    req.query.branch_id = req.profile.branch_id;
+  }
+  next();
+};
