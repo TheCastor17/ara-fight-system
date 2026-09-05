@@ -168,7 +168,10 @@ app.use(errorHandler);
 const server = app.listen(
   config.port,
   () => {
-    // Aquí ya no hay console.log, el servidor arranca en silencio.
+    console.log(`✅ Ara System API v2.0.1 en http://localhost:${config.port}`);
+    console.log(`✅ Health check: http://localhost:${config.port}/health`);
+    console.log(`✅ Auth login: http://localhost:${config.port}/auth/login`);
+    console.log('✅ Servidor listo. Esperando peticiones...');
   }
 );
 

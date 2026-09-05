@@ -19,7 +19,7 @@ export const UserFormModal = ({ isOpen, onClose, onSubmit, initialData, isEditin
     // Cargar sedes para el select
     const fetchBranches = async () => {
       try {
-        const response = await api.get('/catalog/branches');
+        const response = await api.get('api/catalog/branches');
         setBranches(response.data || []);
       } catch (error) {
         console.error('Error fetching branches:', error);

@@ -1,4 +1,4 @@
-const API = (import.meta.env.VITE_API_URL || 'http://localhost:4000').replace(/\/$/, '');
+const API = 'http://localhost:4000';
 let accessToken = sessionStorage.getItem('access_token');
 let refreshToken = sessionStorage.getItem('refresh_token');
 
@@ -21,7 +21,10 @@ async function request(path, options = {}, retry = true) {
     ...options.headers
   };
 
-  const response = await fetch(API + path, {
+  // ✅ Construcción segura de la URL (sin espacios ni barras duplicadas)
+  const url = `${API}${path}`;
+
+  const response = await fetch(url, {
     ...options,
     headers,
     body: options.body !== undefined && typeof options.body !== 'string'
@@ -31,7 +34,7 @@ async function request(path, options = {}, retry = true) {
 
   // Refresh automático si el token expiró
   if (response.status === 401 && retry && refreshToken && !path.includes('/auth/')) {
-    const r = await fetch(API + '/auth/refresh', {
+    const r = await fetch(`${API}/auth/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refresh_token: refreshToken })

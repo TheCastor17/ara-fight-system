@@ -1,21 +1,135 @@
-import {Router} from 'express';import Joi from 'joi';import {admin} from '../supabase.js';import {auth,roles,asyncRoute} from '../middleware.js';import {clean} from '../security.js';
-const r=Router();r.use(auth);
-const list=(table,select='*')=>asyncRoute(async(req,res)=>{let q=admin.from(table).select(select).order('created_at',{ascending:false}).limit(Math.min(Number(req.query.limit||50),100));if(req.query.branch_id)q=q.eq('branch_id',req.query.branch_id);const {data,error}=await q;if(error)throw error;res.json(data)});
-r.get('/me',asyncRoute(async(req,res)=>res.json(req.profile)));
-r.get('/dashboard',asyncRoute(async(req,res)=>{const branch=req.query.branch_id;let s=admin.from('students').select('*',{count:'exact',head:true}).eq('active',true);if(branch)s=s.eq('branch_id',branch);const {count}=await s;const today=new Date().toISOString().slice(0,10);const {data:a}=await admin.from('attendance').select('status').eq('date',today);const attended=(a||[]).filter(x=>['present','late'].includes(x.status)).length;res.json({activeStudents:count||0,attendanceRate:a?.length?Math.round(attended/a.length*100):0})}));
-r.get('/students',roles('admin','staff'),list('student_overview'));
-r.get('/students/:id',roles('admin','staff'),asyncRoute(async(req,res)=>{const {data,error}=await admin.from('student_overview').select('*').eq('id',req.params.id).single();if(error)return res.status(404).json({error:'NO_ENCONTRADO'});res.json(data)}));
-const studentSchema=Joi.object({first_name:Joi.string().max(80).required(),last_name:Joi.string().max(80).required(),document:Joi.string().max(30).allow(''),birth_date:Joi.date().iso().allow(null),branch_id:Joi.string().uuid().required(),guardian_name:Joi.string().max(160).allow(''),guardian_phone:Joi.string().pattern(/^\+?[0-9]{8,15}$/).allow(''),payment_day:Joi.number().integer().min(1).max(31).required()});
-r.post('/students',roles('admin','staff'),asyncRoute(async(req,res)=>{const {value,error}=studentSchema.validate(req.body,{stripUnknown:true});if(error)return res.status(400).json({error:'DATOS_INVALIDOS',detail:error.message});Object.keys(value).forEach(k=>value[k]=clean(value[k]));const {data,e}=await admin.from('students').insert(value).select().single();if(e)throw e;res.status(201).json(data)}));
-r.get('/classes',roles('admin','staff'),list('classes'));
-r.post('/classes',roles('admin'),asyncRoute(async(req,res)=>{const {data,error}=await admin.from('classes').insert(req.body).select().single();if(error)throw error;res.status(201).json(data)}));
-r.patch('/classes/:id/status',roles('admin'),asyncRoute(async(req,res)=>{const {data,error}=await admin.from('classes').update({active:Boolean(req.body.active)}).eq('id',req.params.id).select().single();if(error)throw error;res.json(data)}));
-r.delete('/classes/:id',roles('admin'),asyncRoute(async(req,res)=>{const {error}=await admin.from('classes').delete().eq('id',req.params.id);if(error)throw error;res.status(204).end()}));
-r.get('/attendance',roles('admin','staff'),list('attendance'));
-r.post('/attendance/bulk',roles('admin','staff'),asyncRoute(async(req,res)=>{const schema=Joi.array().max(100).items(Joi.object({student_id:Joi.string().uuid().required(),class_id:Joi.string().uuid().required(),date:Joi.date().iso().required(),status:Joi.string().valid('present','late','absent','justified').required()}));const {value,error}=schema.validate(req.body);if(error)return res.status(400).json({error:'DATOS_INVALIDOS'});const rows=value.map(x=>({...x,recorded_by:req.user.id}));const {data,e}=await admin.from('attendance').upsert(rows,{onConflict:'student_id,class_id,date'}).select();if(e)throw e;res.json(data)}));
-r.get('/payments',roles('admin'),list('payment_overview'));
-r.post('/payments',roles('admin'),asyncRoute(async(req,res)=>{const {data,error}=await admin.from('payments').insert({...req.body,recorded_by:req.user.id}).select().single();if(error)throw error;res.status(201).json(data)}));
-r.get('/plans',roles('admin'),list('payment_plans'));r.post('/plans',roles('admin'),asyncRoute(async(req,res)=>{const {data,error}=await admin.from('payment_plans').insert(req.body).select().single();if(error)throw error;res.status(201).json(data)}));r.patch('/plans/:id',roles('admin'),asyncRoute(async(req,res)=>{const {data,error}=await admin.from('payment_plans').update(req.body).eq('id',req.params.id).select().single();if(error)throw error;res.json(data)}));
-r.get('/branches',list('branches'));r.post('/branches',roles('admin'),asyncRoute(async(req,res)=>{const {data,error}=await admin.from('branches').insert(req.body).select().single();if(error)throw error;res.status(201).json(data)}));r.get('/disciplines',list('disciplines'));r.post('/disciplines',roles('admin'),asyncRoute(async(req,res)=>{const {data,error}=await admin.from('disciplines').insert(req.body).select().single();if(error)throw error;res.status(201).json(data)}));
-r.get('/automations',roles('admin'),list('notification_rules'));r.post('/automations',roles('admin'),asyncRoute(async(req,res)=>{const {data,error}=await admin.from('notification_rules').insert(req.body).select().single();if(error)throw error;res.status(201).json(data)}));r.patch('/automations/:id',roles('admin'),asyncRoute(async(req,res)=>{const {data,error}=await admin.from('notification_rules').update({active:Boolean(req.body.active)}).eq('id',req.params.id).select().single();if(error)throw error;res.json(data)}));
+import { Router } from 'express';
+import Joi from 'joi';
+import { admin } from '../db.js'; // ✅ CORREGIDO: Ahora importa desde db.js
+import { auth, roles, asyncRoute } from '../middleware.js';
+import { clean } from '../security.js';
+
+const r = Router();
+r.use(auth);
+
+const list = (table, select = '*') => asyncRoute(async (req, res) => {
+  let q = admin.from(table).select(select).order('created_at', { ascending: false }).limit(Math.min(Number(req.query.limit || 50), 100));
+  if (req.query.branch_id) q = q.eq('branch_id', req.query.branch_id);
+  const { data, error } = await q;
+  if (error) throw error;
+  res.json(data);
+});
+
+r.get('/me', asyncRoute(async (req, res) => res.json(req.profile)));
+
+r.get('/dashboard', asyncRoute(async (req, res) => {
+  const branch = req.query.branch_id;
+  let s = admin.from('students').select('*', { count: 'exact', head: true }).eq('active', true);
+  if (branch) s = s.eq('branch_id', branch);
+  const { count } = await s;
+  const today = new Date().toISOString().slice(0, 10);
+  const { data: a } = await admin.from('attendance').select('status').eq('date', today);
+  const attended = (a || []).filter(x => ['present', 'late'].includes(x.status)).length;
+  res.json({ activeStudents: count || 0, attendanceRate: a?.length ? Math.round(attended / a.length * 100) : 0 });
+}));
+
+r.get('/students', roles('admin', 'staff'), list('student_overview'));
+r.get('/students/:id', roles('admin', 'staff'), asyncRoute(async (req, res) => {
+  const { data, error } = await admin.from('student_overview').select('*').eq('id', req.params.id).single();
+  if (error) return res.status(404).json({ error: 'NO_ENCONTRADO' });
+  res.json(data);
+}));
+
+const studentSchema = Joi.object({
+  first_name: Joi.string().max(80).required(),
+  last_name: Joi.string().max(80).required(),
+  document: Joi.string().max(30).allow(''),
+  birth_date: Joi.date().iso().allow(null),
+  branch_id: Joi.string().uuid().required(),
+  guardian_name: Joi.string().max(160).allow(''),
+  guardian_phone: Joi.string().pattern(/^\+?[0-9]{8,15}$/).allow(''),
+  payment_day: Joi.number().integer().min(1).max(31).required()
+});
+
+r.post('/students', roles('admin', 'staff'), asyncRoute(async (req, res) => {
+  const { value, error } = studentSchema.validate(req.body, { stripUnknown: true });
+  if (error) return res.status(400).json({ error: 'DATOS_INVALIDOS', detail: error.message });
+  Object.keys(value).forEach(k => value[k] = clean(value[k]));
+  const { data, e } = await admin.from('students').insert(value).select().single();
+  if (e) throw e;
+  res.status(201).json(data);
+}));
+
+r.get('/classes', roles('admin', 'staff'), list('classes'));
+r.post('/classes', roles('admin'), asyncRoute(async (req, res) => {
+  const { data, error } = await admin.from('classes').insert(req.body).select().single();
+  if (error) throw error;
+  res.status(201).json(data);
+}));
+r.patch('/classes/:id/status', roles('admin'), asyncRoute(async (req, res) => {
+  const { data, error } = await admin.from('classes').update({ active: Boolean(req.body.active) }).eq('id', req.params.id).select().single();
+  if (error) throw error;
+  res.json(data);
+}));
+r.delete('/classes/:id', roles('admin'), asyncRoute(async (req, res) => {
+  const { error } = await admin.from('classes').delete().eq('id', req.params.id);
+  if (error) throw error;
+  res.status(204).end();
+}));
+
+r.get('/attendance', roles('admin', 'staff'), list('attendance'));
+r.post('/attendance/bulk', roles('admin', 'staff'), asyncRoute(async (req, res) => {
+  const schema = Joi.array().max(100).items(Joi.object({
+    student_id: Joi.string().uuid().required(),
+    class_id: Joi.string().uuid().required(),
+    date: Joi.date().iso().required(),
+    status: Joi.string().valid('present', 'late', 'absent', 'justified').required()
+  }));
+  const { value, error } = schema.validate(req.body);
+  if (error) return res.status(400).json({ error: 'DATOS_INVALIDOS' });
+  const rows = value.map(x => ({ ...x, recorded_by: req.user.id }));
+  const { data, e } = await admin.from('attendance').upsert(rows, { onConflict: 'student_id,class_id,date' }).select();
+  if (e) throw e;
+  res.json(data);
+}));
+
+r.get('/payments', roles('admin'), list('payment_overview'));
+r.post('/payments', roles('admin'), asyncRoute(async (req, res) => {
+  const { data, error } = await admin.from('payments').insert({ ...req.body, recorded_by: req.user.id }).select().single();
+  if (error) throw error;
+  res.status(201).json(data);
+}));
+
+r.get('/plans', roles('admin'), list('payment_plans'));
+r.post('/plans', roles('admin'), asyncRoute(async (req, res) => {
+  const { data, error } = await admin.from('payment_plans').insert(req.body).select().single();
+  if (error) throw error;
+  res.status(201).json(data);
+}));
+r.patch('/plans/:id', roles('admin'), asyncRoute(async (req, res) => {
+  const { data, error } = await admin.from('payment_plans').update(req.body).eq('id', req.params.id).select().single();
+  if (error) throw error;
+  res.json(data);
+}));
+
+r.get('/branches', list('branches'));
+r.post('/branches', roles('admin'), asyncRoute(async (req, res) => {
+  const { data, error } = await admin.from('branches').insert(req.body).select().single();
+  if (error) throw error;
+  res.status(201).json(data);
+}));
+r.get('/disciplines', list('disciplines'));
+r.post('/disciplines', roles('admin'), asyncRoute(async (req, res) => {
+  const { data, error } = await admin.from('disciplines').insert(req.body).select().single();
+  if (error) throw error;
+  res.status(201).json(data);
+}));
+
+r.get('/automations', roles('admin'), list('notification_rules'));
+r.post('/automations', roles('admin'), asyncRoute(async (req, res) => {
+  const { data, error } = await admin.from('notification_rules').insert(req.body).select().single();
+  if (error) throw error;
+  res.status(201).json(data);
+}));
+r.patch('/automations/:id', roles('admin'), asyncRoute(async (req, res) => {
+  const { data, error } = await admin.from('notification_rules').update({ active: Boolean(req.body.active) }).eq('id', req.params.id).select().single();
+  if (error) throw error;
+  res.json(data);
+}));
+
 export default r;
