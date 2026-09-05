@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import Joi from 'joi';
-import { admin } from '../db.js'; // ✅ CORREGIDO: Ahora importa desde db.js
+import { admin } from '../db.js';
 import { auth, roles, asyncRoute } from '../middleware.js';
 import { clean } from '../security.js';
 

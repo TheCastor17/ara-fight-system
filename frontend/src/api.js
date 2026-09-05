@@ -1,4 +1,4 @@
-const API = 'http://localhost:4000';
+const API = (import.meta.env.VITE_API_URL || 'http://localhost:4000');
 let accessToken = sessionStorage.getItem('access_token');
 let refreshToken = sessionStorage.getItem('refresh_token');
 
